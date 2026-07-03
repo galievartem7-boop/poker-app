@@ -1,0 +1,882 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Покерный счёт</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/6.26.0/babel.min.js"></script>
+<style>html, body, #root { height: 100%; margin: 0; background: #0a3527; }</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/plain" id="app-source">
+const { useState, useEffect } = React;
+
+function iconSpan(symbol) {
+  return function IconComp({ size }) {
+    return React.createElement(
+      "span",
+      { style: { fontSize: (size || 16), lineHeight: 1, display: "inline-block" } },
+      symbol
+    );
+  };
+}
+const Plus = iconSpan("+");
+const Minus = iconSpan("\u2212");
+const Trophy = iconSpan("\uD83C\uDFC6");
+const RotateCcw = iconSpan("\u21BA");
+const Play = iconSpan("\u25B6");
+const Undo2 = iconSpan("\u21A9");
+const RefreshCw = iconSpan("\u27F3");
+const Divide = iconSpan("\u00F7");
+const HelpCircle = iconSpan("?");
+const Flag = iconSpan("\uD83D\uDEA9");
+const SkipForward = iconSpan("\u23ED");
+const Equal = iconSpan("=");
+const Flame = iconSpan("\uD83D\uDD25");
+const X = iconSpan("\u2715");
+const ArrowRight = iconSpan("\u2192");
+
+const CHIPS = [
+  { value: 10, bg: "#e8e4da", fg: "#2a2a2a" },
+  { value: 25, bg: "#1f6b3f", fg: "#f2ede0" },
+  { value: 50, bg: "#1d4f8c", fg: "#f2ede0" },
+  { value: 100, bg: "#1a1a1a", fg: "#f2ede0" },
+  { value: 500, bg: "#5c1f3a", fg: "#f2ede0" },
+];
+
+const STREET_NAMES = ["Префлоп", "Флоп", "Тёрн", "Ривер"];
+
+const HAND_RANKINGS = [
+  { rank: 1, name: "Роял-флеш", desc: "A, K, Q, J, 10 одной масти" },
+  { rank: 2, name: "Стрит-флеш", desc: "Пять карт одной масти подряд по номиналу" },
+  { rank: 3, name: "Каре", desc: "Четыре карты одного достоинства" },
+  { rank: 4, name: "Фулл-хаус", desc: "Тройка и пара вместе" },
+  { rank: 5, name: "Флеш", desc: "Пять карт одной масти, не подряд" },
+  { rank: 6, name: "Стрит", desc: "Пять карт подряд по номиналу, разных мастей" },
+  { rank: 7, name: "Сет (тройка)", desc: "Три карты одного достоинства" },
+  { rank: 8, name: "Две пары", desc: "Две карты одного достоинства + ещё две другого" },
+  { rank: 9, name: "Пара", desc: "Две карты одного достоинства" },
+  { rank: 10, name: "Старшая карта", desc: "Если вообще ничего не собралось" },
+];
+
+function formatRub(n) {
+  return n.toLocaleString("ru-RU") + " \u20BD";
+}
+
+function HandRankingsList({ rotated }) {
+  return (
+    <div style={{ transform: rotated ? "rotate(180deg)" : "none" }} className="flex-1 overflow-y-auto px-6 py-4">
+      <h2 className="text-center uppercase text-xs tracking-widest mb-3" style={{ color: "#c9a227" }}>
+        Комбинации: старшая → младшая
+      </h2>
+      <ol className="space-y-2 max-w-sm mx-auto">
+        {HAND_RANKINGS.map((h) => (
+          <li key={h.rank} className="flex items-baseline gap-3">
+            <span className="font-mono text-xs w-5 text-right shrink-0" style={{ color: "#c9a227" }}>
+              {h.rank}
+            </span>
+            <span>
+              <span className="font-semibold" style={{ color: "#f2ede0" }}>
+                {h.name}
+              </span>
+              <span className="block text-xs opacity-70" style={{ color: "#f2ede0" }}>
+                {h.desc}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function ActionButton({ icon: Icon, label, onClick, disabled, accent, title }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="flex-1 h-11 rounded-lg flex flex-col items-center justify-center gap-0.5 border disabled:opacity-30 active:scale-90 transition-transform"
+      style={{ borderColor: accent, color: accent, background: "#0a3527" }}
+    >
+      <Icon size={14} />
+      <span className="text-[9px] uppercase tracking-wide leading-none">{label}</span>
+    </button>
+  );
+}
+
+function PlayerPanel({
+  name,
+  balance,
+  stake,
+  oppStake,
+  accent,
+  rotated,
+  onRaise,
+  onLower,
+  onWin,
+  onDealer,
+  onFold,
+  onCheck,
+  onCall,
+  onAllIn,
+  winDisabled,
+  flashing,
+  isDealer,
+  isTurn,
+  locked,
+}) {
+  const gated = !isTurn || locked;
+  const callDisabled = gated || oppStake <= stake || balance <= 0;
+  const checkDisabled = gated || stake < oppStake;
+
+  return (
+    <div
+      style={{
+        transform: rotated ? "rotate(180deg)" : "none",
+        background: "radial-gradient(120% 140% at 50% -10%, #0f4a37 0%, #0a3527 55%, #082a1f 100%)",
+        boxShadow: isTurn ? `inset 0 0 0 3px ${accent}, inset 0 0 30px ${accent}66` : "none",
+        transition: "box-shadow 300ms ease",
+      }}
+      className="flex-1 flex flex-col items-center justify-between px-4 py-3 relative overflow-hidden"
+    >
+      <div className="absolute top-0 left-0 right-0 h-1" style={{ background: accent }} />
+
+      <button
+        onClick={onDealer}
+        title="Сделать дилером"
+        className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 active:scale-90 transition-transform"
+        style={{
+          background: isDealer ? "#f2ede0" : "transparent",
+          color: isDealer ? "#1a1a1a" : "#f2ede0",
+          borderColor: isDealer ? "#c9a227" : "#f2ede055",
+          opacity: isDealer ? 1 : 0.5,
+        }}
+      >
+        D
+      </button>
+
+      <div className="text-center">
+        <div className="uppercase text-xs tracking-widest opacity-70" style={{ color: "#f2ede0" }}>
+          {name}
+        </div>
+        <div
+          className={
+            "font-mono font-bold tabular-nums leading-none mt-1 transition-transform duration-300 " +
+            (flashing ? "scale-110" : "scale-100")
+          }
+          style={{ color: "#f2ede0", fontSize: "clamp(1.9rem, 8vw, 2.8rem)" }}
+        >
+          {formatRub(balance)}
+        </div>
+        <div className="mt-1 flex items-center justify-center gap-2">
+          <span className="text-sm tracking-wide" style={{ color: accent }}>
+            Ставка: {formatRub(stake)}
+          </span>
+          {isTurn && (
+            <span
+              className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full tracking-wide"
+              style={{ background: accent, color: "#f2ede0" }}
+            >
+              Ходит
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2 w-full max-w-xs">
+        <div className="flex gap-2 w-full">
+          <ActionButton icon={Flag} label="Фолд" onClick={onFold} disabled={gated} accent={accent} />
+          <ActionButton
+            icon={SkipForward}
+            label="Чек"
+            onClick={onCheck}
+            disabled={checkDisabled}
+            accent={accent}
+            title={stake < oppStake ? "Нельзя чекать — есть неуравненная ставка" : "Пропустить ход без ставки"}
+          />
+          <ActionButton icon={Equal} label="Колл" onClick={onCall} disabled={callDisabled} accent={accent} />
+          <ActionButton icon={Flame} label="Ва-банк" onClick={onAllIn} disabled={gated || balance <= 0} accent={accent} />
+        </div>
+
+        <div className="flex items-center gap-3 w-full">
+          <button
+            onClick={onLower}
+            disabled={gated || stake <= 0}
+            className="w-12 h-12 rounded-full flex items-center justify-center border-2 disabled:opacity-30 active:scale-90 transition-transform"
+            style={{ borderColor: accent, color: accent, background: "#0a3527" }}
+          >
+            <Minus size={20} />
+          </button>
+
+          <button
+            onClick={onWin}
+            disabled={winDisabled}
+            className="flex-1 h-12 rounded-full flex items-center justify-center gap-2 font-semibold uppercase text-sm tracking-wide disabled:opacity-30 active:scale-95 transition-transform"
+            style={{ background: accent, color: "#f2ede0" }}
+          >
+            <Trophy size={18} />
+            Победа
+          </button>
+
+          <button
+            onClick={onRaise}
+            disabled={gated || balance <= 0}
+            className="w-12 h-12 rounded-full flex items-center justify-center border-2 disabled:opacity-30 active:scale-90 transition-transform"
+            style={{ borderColor: accent, color: accent, background: "#0a3527" }}
+          >
+            <Plus size={20} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PokerLedger() {
+  const [gameStarted, setGameStarted] = useState(false);
+  const [startBalance, setStartBalance] = useState(1000);
+  const [name1, setName1] = useState("Сын");
+  const [name2, setName2] = useState("Я");
+  const [sbAmount, setSbAmount] = useState(10);
+  const [bbAmount, setBbAmount] = useState(20);
+
+  const [step, setStep] = useState(25);
+  const [balance1, setBalance1] = useState(0);
+  const [balance2, setBalance2] = useState(0);
+  const [stake1, setStake1] = useState(0);
+  const [stake2, setStake2] = useState(0);
+  const [flash, setFlash] = useState(null);
+  const [dealer, setDealer] = useState(2);
+  const [turn, setTurn] = useState(2);
+  const [history, setHistory] = useState([]);
+  const [showHelp, setShowHelp] = useState(false);
+  const [street, setStreet] = useState(0);
+  const [streetActed, setStreetActed] = useState(0);
+  const [awaitingDeal, setAwaitingDeal] = useState(false);
+  const [gameOverResult, setGameOverResult] = useState(null);
+
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(null), 350);
+    return () => clearTimeout(t);
+  }, [flash]);
+
+  const pot = stake1 + stake2;
+
+  function pushHistory() {
+    setHistory((h) =>
+      [...h, { balance1, balance2, stake1, stake2, dealer, turn, street, streetActed, awaitingDeal }].slice(-20)
+    );
+  }
+
+  // Betting for the street closes (stakes matched, or both players are fully
+  // committed) -> instead of jumping straight to the next street, we wait
+  // for someone to confirm the next card has actually been placed on the
+  // table. Betting stays locked until that confirmation.
+  function registerStreetAction(newStake1, newStake2, newBalance1, newBalance2) {
+    const nextCount = streetActed + 1;
+    const stakesClosed = newStake1 === newStake2 && nextCount >= 2;
+    const bothAllIn = newBalance1 <= 0 && newBalance2 <= 0;
+    if (stakesClosed || bothAllIn) {
+      if (street < STREET_NAMES.length - 1) {
+        setAwaitingDeal(true);
+      }
+      setStreetActed(0);
+    } else {
+      setStreetActed(nextCount);
+    }
+  }
+
+  function confirmDeal() {
+    if (!awaitingDeal) return;
+    pushHistory();
+    setStreet((s) => Math.min(s + 1, STREET_NAMES.length - 1));
+    setStreetActed(0);
+    setAwaitingDeal(false);
+  }
+
+  function resetHandProgress() {
+    setStreet(0);
+    setStreetActed(0);
+    setAwaitingDeal(false);
+  }
+
+  function computeBlinds(dealerPlayer, bal1, bal2) {
+    const sb = Number(sbAmount) || 0;
+    const bb = Number(bbAmount) || 0;
+    const sbPlayer = dealerPlayer;
+    const bbPlayer = dealerPlayer === 1 ? 2 : 1;
+    let b1 = bal1;
+    let b2 = bal2;
+    let s1 = 0;
+    let s2 = 0;
+    const sbBal = sbPlayer === 1 ? b1 : b2;
+    const bbBal = bbPlayer === 1 ? b1 : b2;
+    const sbPost = Math.max(0, Math.min(sb, sbBal));
+    const bbPost = Math.max(0, Math.min(bb, bbBal));
+    if (sbPlayer === 1) {
+      b1 -= sbPost;
+      s1 = sbPost;
+    } else {
+      b2 -= sbPost;
+      s2 = sbPost;
+    }
+    if (bbPlayer === 1) {
+      b1 -= bbPost;
+      s1 = bbPost;
+    } else {
+      b2 -= bbPost;
+      s2 = bbPost;
+    }
+    return { balance1: b1, balance2: b2, stake1: s1, stake2: s2 };
+  }
+
+  function startHandWithDealer(dealerPlayer, bal1, bal2) {
+    const blinds = computeBlinds(dealerPlayer, bal1, bal2);
+    setBalance1(blinds.balance1);
+    setBalance2(blinds.balance2);
+    setStake1(blinds.stake1);
+    setStake2(blinds.stake2);
+    setDealer(dealerPlayer);
+    setTurn(dealerPlayer);
+    resetHandProgress();
+  }
+
+  function finishHand(nb1, nb2, newDealer) {
+    if (nb1 <= 0 || nb2 <= 0) {
+      setBalance1(nb1);
+      setBalance2(nb2);
+      setStake1(0);
+      setStake2(0);
+      resetHandProgress();
+      setGameOverResult({ winner: nb1 <= 0 ? 2 : 1 });
+      return;
+    }
+    startHandWithDealer(newDealer, nb1, nb2);
+  }
+
+  function startGame() {
+    const b = Number(startBalance) || 0;
+    const initialDealer = Math.random() < 0.5 ? 1 : 2;
+    setHistory([]);
+    setGameOverResult(null);
+    startHandWithDealer(initialDealer, b, b);
+    setGameStarted(true);
+  }
+
+  function raise(player) {
+    if (turn !== player) return;
+    const bal = player === 1 ? balance1 : balance2;
+    if (bal <= 0) return;
+    const myStake = player === 1 ? stake1 : stake2;
+    const oppStakeVal = player === 1 ? stake2 : stake1;
+    // A raise must first cover whatever's needed to call the outstanding bet;
+    // the chosen chip is added on top of that, never instead of it. If the
+    // chip alone would already cover the call (or there's nothing to call),
+    // it behaves exactly as before.
+    const diff = Math.max(0, oppStakeVal - myStake);
+    const desired = Math.max(step, diff);
+    const amount = Math.min(desired, bal);
+    if (amount <= 0) return;
+    pushHistory();
+    let newStake1 = stake1;
+    let newStake2 = stake2;
+    let newBalance1 = balance1;
+    let newBalance2 = balance2;
+    if (player === 1) {
+      setBalance1((b) => b - amount);
+      setStake1((s) => s + amount);
+      newStake1 = stake1 + amount;
+      newBalance1 = balance1 - amount;
+    } else {
+      setBalance2((b) => b - amount);
+      setStake2((s) => s + amount);
+      newStake2 = stake2 + amount;
+      newBalance2 = balance2 - amount;
+    }
+    setTurn(player === 1 ? 2 : 1);
+    registerStreetAction(newStake1, newStake2, newBalance1, newBalance2);
+  }
+
+  function lower(player) {
+    if (turn !== player) return;
+    const st = player === 1 ? stake1 : stake2;
+    if (st <= 0) return;
+    pushHistory();
+    const amount = Math.min(step, st);
+    if (player === 1) {
+      setBalance1((b) => b + amount);
+      setStake1((s) => s - amount);
+    } else {
+      setBalance2((b) => b + amount);
+      setStake2((s) => s - amount);
+    }
+    setTurn(player === 1 ? 2 : 1);
+  }
+
+  function check(player) {
+    if (turn !== player) return;
+    const myStake = player === 1 ? stake1 : stake2;
+    const oppStakeVal = player === 1 ? stake2 : stake1;
+    if (myStake < oppStakeVal) return;
+    pushHistory();
+    setTurn(player === 1 ? 2 : 1);
+    registerStreetAction(stake1, stake2, balance1, balance2);
+  }
+
+  function call(player) {
+    if (turn !== player) return;
+    const myStake = player === 1 ? stake1 : stake2;
+    const oppStake = player === 1 ? stake2 : stake1;
+    const myBalance = player === 1 ? balance1 : balance2;
+    const diff = oppStake - myStake;
+    if (diff <= 0) return;
+    const amount = Math.min(diff, myBalance);
+    if (amount <= 0) return;
+    pushHistory();
+    let newStake1 = stake1;
+    let newStake2 = stake2;
+    let newBalance1 = balance1;
+    let newBalance2 = balance2;
+    if (player === 1) {
+      setBalance1((b) => b - amount);
+      setStake1((s) => s + amount);
+      newStake1 = stake1 + amount;
+      newBalance1 = balance1 - amount;
+    } else {
+      setBalance2((b) => b - amount);
+      setStake2((s) => s + amount);
+      newStake2 = stake2 + amount;
+      newBalance2 = balance2 - amount;
+    }
+    setTurn(player === 1 ? 2 : 1);
+    registerStreetAction(newStake1, newStake2, newBalance1, newBalance2);
+  }
+
+  function allIn(player) {
+    if (turn !== player) return;
+    const bal = player === 1 ? balance1 : balance2;
+    if (bal <= 0) return;
+    pushHistory();
+    let newStake1 = stake1;
+    let newStake2 = stake2;
+    if (player === 1) {
+      setBalance1(0);
+      setStake1((s) => s + bal);
+      newStake1 = stake1 + bal;
+    } else {
+      setBalance2(0);
+      setStake2((s) => s + bal);
+      newStake2 = stake2 + bal;
+    }
+    setTurn(player === 1 ? 2 : 1);
+    registerStreetAction(newStake1, newStake2, player === 1 ? 0 : balance1, player === 1 ? balance2 : 0);
+  }
+
+  function fold(player) {
+    if (turn !== player) return;
+    pushHistory();
+    const winner = player === 1 ? 2 : 1;
+    const currentPot = stake1 + stake2;
+    let nb1 = balance1;
+    let nb2 = balance2;
+    if (currentPot > 0) {
+      if (winner === 1) nb1 += currentPot;
+      else nb2 += currentPot;
+    }
+    setFlash(winner);
+    const newDealer = dealer === 1 ? 2 : 1;
+    finishHand(nb1, nb2, newDealer);
+  }
+
+  function win(player) {
+    if (pot <= 0) return;
+    pushHistory();
+    let nb1 = balance1;
+    let nb2 = balance2;
+    if (player === 1) nb1 += pot;
+    else nb2 += pot;
+    setFlash(player);
+    const newDealer = dealer === 1 ? 2 : 1;
+    finishHand(nb1, nb2, newDealer);
+  }
+
+  function splitPot() {
+    if (pot <= 0) return;
+    pushHistory();
+    const half = Math.floor(pot / 2);
+    const remainder = pot - half * 2;
+    let add1 = half;
+    let add2 = half;
+    if (remainder > 0) {
+      if (dealer === 1) add2 += remainder;
+      else add1 += remainder;
+    }
+    const nb1 = balance1 + add1;
+    const nb2 = balance2 + add2;
+    const newDealer = dealer === 1 ? 2 : 1;
+    finishHand(nb1, nb2, newDealer);
+  }
+
+  function cancelRound() {
+    pushHistory();
+    const nb1 = balance1 + stake1;
+    const nb2 = balance2 + stake2;
+    const newDealer = dealer === 1 ? 2 : 1;
+    finishHand(nb1, nb2, newDealer);
+  }
+
+  function undo() {
+    setHistory((h) => {
+      if (h.length === 0) return h;
+      const last = h[h.length - 1];
+      setBalance1(last.balance1);
+      setBalance2(last.balance2);
+      setStake1(last.stake1);
+      setStake2(last.stake2);
+      setDealer(last.dealer);
+      setTurn(last.turn);
+      setStreet(last.street);
+      setStreetActed(last.streetActed);
+      setAwaitingDeal(last.awaitingDeal);
+      setFlash(null);
+      return h.slice(0, -1);
+    });
+  }
+
+  function passDealer(player) {
+    setDealer(player);
+  }
+
+  if (!gameStarted) {
+    return (
+      <div
+        className="w-full h-screen flex items-center justify-center px-6 overflow-y-auto py-8"
+        style={{ background: "radial-gradient(120% 140% at 50% -10%, #0f4a37 0%, #0a3527 55%, #082a1f 100%)" }}
+      >
+        <div className="w-full max-w-sm rounded-lg p-6 border-t-4" style={{ background: "#7a5230", borderColor: "#c9a227" }}>
+          <h1 className="text-2xl font-bold text-center mb-1 tracking-wide" style={{ color: "#f2ede0" }}>
+            Покерный счёт
+          </h1>
+          <p className="text-center text-xs mb-5 opacity-80" style={{ color: "#f2ede0" }}>
+            Играйте настоящими картами — приложение только считает фишки, блайнды и банк.
+          </p>
+
+          <label className="block text-xs uppercase tracking-wide mb-1" style={{ color: "#e8d9b8" }}>
+            Начальный баланс, ₽
+          </label>
+          <input
+            type="number"
+            min="0"
+            step="50"
+            value={startBalance}
+            onChange={(e) => setStartBalance(e.target.value)}
+            className="w-full mb-4 rounded px-3 py-2 font-mono text-lg tabular-nums outline-none"
+            style={{ background: "#f2ede0", color: "#1a1a1a" }}
+          />
+
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div>
+              <label className="block text-xs uppercase tracking-wide mb-1" style={{ color: "#e8d9b8" }}>
+                Малый блайнд
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={sbAmount}
+                onChange={(e) => setSbAmount(e.target.value)}
+                className="w-full rounded px-3 py-2 font-mono tabular-nums outline-none"
+                style={{ background: "#f2ede0", color: "#1a1a1a" }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-wide mb-1" style={{ color: "#e8d9b8" }}>
+                Большой блайнд
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={bbAmount}
+                onChange={(e) => setBbAmount(e.target.value)}
+                className="w-full rounded px-3 py-2 font-mono tabular-nums outline-none"
+                style={{ background: "#f2ede0", color: "#1a1a1a" }}
+              />
+            </div>
+          </div>
+
+          <label className="block text-xs uppercase tracking-wide mb-1" style={{ color: "#e8d9b8" }}>
+            Игрок наверху
+          </label>
+          <input
+            type="text"
+            maxLength={14}
+            value={name1}
+            onChange={(e) => setName1(e.target.value)}
+            className="w-full mb-4 rounded px-3 py-2 outline-none"
+            style={{ background: "#f2ede0", color: "#1a1a1a" }}
+          />
+
+          <label className="block text-xs uppercase tracking-wide mb-1" style={{ color: "#e8d9b8" }}>
+            Игрок внизу
+          </label>
+          <input
+            type="text"
+            maxLength={14}
+            value={name2}
+            onChange={(e) => setName2(e.target.value)}
+            className="w-full mb-6 rounded px-3 py-2 outline-none"
+            style={{ background: "#f2ede0", color: "#1a1a1a" }}
+          />
+
+          <button
+            onClick={startGame}
+            disabled={!startBalance || Number(startBalance) <= 0}
+            className="w-full h-12 rounded flex items-center justify-center gap-2 font-semibold uppercase tracking-wide disabled:opacity-40 active:scale-95 transition-transform"
+            style={{ background: "#c9a227", color: "#1a1a1a" }}
+          >
+            <Play size={18} />
+            Начать игру
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-screen flex flex-col overflow-hidden relative">
+      <PlayerPanel
+        name={name1}
+        balance={balance1}
+        stake={stake1}
+        oppStake={stake2}
+        accent="#c9524f"
+        rotated={true}
+        onRaise={() => raise(1)}
+        onLower={() => lower(1)}
+        onWin={() => win(1)}
+        onDealer={() => passDealer(1)}
+        onFold={() => fold(1)}
+        onCheck={() => check(1)}
+        onCall={() => call(1)}
+        onAllIn={() => allIn(1)}
+        winDisabled={pot <= 0}
+        flashing={flash === 1}
+        isDealer={dealer === 1}
+        isTurn={turn === 1}
+        locked={awaitingDeal}
+      />
+
+      {/* rail */}
+      <div
+        className="flex flex-col items-center gap-2 py-2 px-3"
+        style={{ background: "#7a5230", borderTop: "2px solid #5c3d21", borderBottom: "2px solid #5c3d21" }}
+      >
+        <div className="flex items-center justify-between w-full max-w-md gap-2">
+          <div className="flex flex-col items-start leading-tight">
+            <span className="text-[9px] uppercase tracking-widest opacity-70" style={{ color: "#e8d9b8" }}>
+              Этап
+            </span>
+            <span className="font-bold uppercase tracking-wide text-sm" style={{ color: "#c9a227" }}>
+              {STREET_NAMES[street]}
+            </span>
+          </div>
+
+          <div className="flex gap-1">
+            {STREET_NAMES.map((_, i) => (
+              <span key={i} className="w-2 h-2 rounded-full" style={{ background: i <= street ? "#c9a227" : "#5c3d2199" }} />
+            ))}
+          </div>
+
+          {street < STREET_NAMES.length - 1 && (
+            <button
+              onClick={confirmDeal}
+              disabled={!awaitingDeal}
+              title={awaitingDeal ? "Подтвердить, что карта выложена на стол" : "Сначала завершите торги на этой улице"}
+              className={
+                "px-2 h-8 rounded-full flex items-center gap-1 text-[9px] uppercase font-bold tracking-wide disabled:opacity-30 active:scale-90 transition-transform whitespace-nowrap " +
+                (awaitingDeal ? "animate-pulse" : "")
+              }
+              style={{ background: "#c9a227", color: "#1a1a1a" }}
+            >
+              <ArrowRight size={12} />
+              {STREET_NAMES[street + 1]} выложен
+            </button>
+          )}
+        </div>
+
+        {awaitingDeal && (
+          <div
+            className="text-[9px] text-center px-2 py-1 rounded w-full max-w-md"
+            style={{ background: "#5c1f3a", color: "#f2ede0" }}
+          >
+            Торги закрыты. Выложите {STREET_NAMES[street + 1].toLowerCase()} и нажмите кнопку выше
+          </div>
+        )}
+
+        <div className="flex items-center justify-between w-full max-w-md">
+          <div className="flex flex-col leading-tight">
+            <span className="text-[9px] uppercase tracking-wide opacity-70" style={{ color: "#e8d9b8" }}>
+              Банк · Блайнды {sbAmount}/{bbAmount}
+            </span>
+            <span className="font-mono font-bold tabular-nums" style={{ color: "#f2ede0" }}>
+              {formatRub(pot)}
+            </span>
+          </div>
+          <button
+            onClick={() => setShowHelp(true)}
+            title="Комбинации в покере"
+            className="w-8 h-8 rounded-full flex items-center justify-center active:scale-90"
+            style={{ background: "#5c3d21", color: "#e8d9b8" }}
+          >
+            <HelpCircle size={14} />
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between w-full max-w-md">
+          <div className="flex gap-2">
+            {CHIPS.map((c) => (
+              <button
+                key={c.value}
+                onClick={() => setStep(c.value)}
+                className="w-9 h-9 rounded-full flex items-center justify-center text-[10px] font-bold border-2 active:scale-90 transition-transform"
+                style={{
+                  background: c.bg,
+                  color: c.fg,
+                  borderColor: step === c.value ? "#c9a227" : "transparent",
+                  boxShadow: step === c.value ? "0 0 0 2px #c9a227 inset" : "none",
+                }}
+              >
+                {c.value}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={undo}
+              disabled={history.length === 0}
+              title="Отменить последнее действие"
+              className="w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-30 active:scale-90"
+              style={{ background: "#5c3d21", color: "#e8d9b8" }}
+            >
+              <Undo2 size={14} />
+            </button>
+            <button
+              onClick={splitPot}
+              disabled={pot <= 0}
+              title="Сплит банка (ничья)"
+              className="w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-30 active:scale-90"
+              style={{ background: "#5c3d21", color: "#e8d9b8" }}
+            >
+              <Divide size={14} />
+            </button>
+            <button
+              onClick={cancelRound}
+              disabled={pot <= 0}
+              title="Вернуть ставки без победителя"
+              className="w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-30 active:scale-90"
+              style={{ background: "#5c3d21", color: "#e8d9b8" }}
+            >
+              <RefreshCw size={14} />
+            </button>
+            <button
+              onClick={() => setGameStarted(false)}
+              title="Новая игра"
+              className="w-8 h-8 rounded-full flex items-center justify-center active:scale-90"
+              style={{ background: "#5c3d21", color: "#e8d9b8" }}
+            >
+              <RotateCcw size={14} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <PlayerPanel
+        name={name2}
+        balance={balance2}
+        stake={stake2}
+        oppStake={stake1}
+        accent="#3a7ac9"
+        rotated={false}
+        onRaise={() => raise(2)}
+        onLower={() => lower(2)}
+        onWin={() => win(2)}
+        onDealer={() => passDealer(2)}
+        onFold={() => fold(2)}
+        onCheck={() => check(2)}
+        onCall={() => call(2)}
+        onAllIn={() => allIn(2)}
+        winDisabled={pot <= 0}
+        flashing={flash === 2}
+        isDealer={dealer === 2}
+        isTurn={turn === 2}
+        locked={awaitingDeal}
+      />
+
+      {showHelp && (
+        <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "rgba(5,20,15,0.98)" }}>
+          <HandRankingsList rotated={true} />
+          <div
+            className="flex items-center justify-center py-3"
+            style={{ background: "#7a5230", borderTop: "2px solid #5c3d21", borderBottom: "2px solid #5c3d21" }}
+          >
+            <button
+              onClick={() => setShowHelp(false)}
+              className="flex items-center gap-2 px-4 py-2 rounded-full font-semibold uppercase text-xs tracking-wide active:scale-95"
+              style={{ background: "#c9a227", color: "#1a1a1a" }}
+            >
+              <X size={14} />
+              Закрыть
+            </button>
+          </div>
+          <HandRankingsList rotated={false} />
+        </div>
+      )}
+
+      {gameOverResult && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center px-6 text-center"
+          style={{ background: "radial-gradient(120% 140% at 50% -10%, #0f4a37 0%, #0a3527 55%, #082a1f 100%)" }}
+        >
+          <div className="uppercase text-xs tracking-widest opacity-70 mb-2" style={{ color: "#f2ede0" }}>
+            Игра окончена
+          </div>
+          <div className="text-2xl font-bold mb-6" style={{ color: "#c9a227" }}>
+            {gameOverResult.winner === 1 ? name1 : name2} забирает все фишки!
+          </div>
+          <button
+            onClick={() => {
+              setGameOverResult(null);
+              setGameStarted(false);
+            }}
+            className="px-5 h-12 rounded flex items-center gap-2 font-semibold uppercase active:scale-95"
+            style={{ background: "#c9a227", color: "#1a1a1a" }}
+          >
+            <Play size={16} />
+            Новая игра
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+ReactDOM.createRoot(document.getElementById("root")).render(<PokerLedger />);
+</script>
+
+<script>
+  var source = document.getElementById('app-source').textContent;
+  var result = Babel.transform(source, { presets: ['react'] });
+  var script = document.createElement('script');
+  script.textContent = result.code;
+  document.body.appendChild(script);
+</script>
+</body>
+</html>

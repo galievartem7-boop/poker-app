@@ -2,13 +2,19 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Покерный счёт</title>
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="mobile-web-app-capable" content="yes" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/6.26.0/babel.min.js"></script>
-<style>html, body, #root { height: 100%; margin: 0; background: #0a3527; }</style>
+<style>
+  html, body { height: 100%; margin: 0; background: #0a3527; overscroll-behavior: none; }
+  #root { height: 100dvh; }
+</style>
 </head>
 <body>
 <div id="root"></div>
@@ -143,7 +149,7 @@ function PlayerPanel({
         boxShadow: isTurn ? `inset 0 0 0 3px ${accent}, inset 0 0 30px ${accent}66` : "none",
         transition: "box-shadow 300ms ease",
       }}
-      className="flex-1 flex flex-col items-center justify-between px-4 py-3 relative overflow-hidden"
+      className="flex-1 min-h-0 flex flex-col items-center justify-between px-4 py-3 relative overflow-hidden"
     >
       <div className="absolute top-0 left-0 right-0 h-1" style={{ background: accent }} />
 
@@ -557,8 +563,11 @@ function PokerLedger() {
   if (!gameStarted) {
     return (
       <div
-        className="w-full h-screen flex items-center justify-center px-6 overflow-y-auto py-8"
-        style={{ background: "radial-gradient(120% 140% at 50% -10%, #0f4a37 0%, #0a3527 55%, #082a1f 100%)" }}
+        className="w-full flex items-center justify-center px-6 overflow-y-auto py-8"
+        style={{
+          height: "100dvh",
+          background: "radial-gradient(120% 140% at 50% -10%, #0f4a37 0%, #0a3527 55%, #082a1f 100%)",
+        }}
       >
         <div className="w-full max-w-sm rounded-lg p-6 border-t-4" style={{ background: "#7a5230", borderColor: "#c9a227" }}>
           <h1 className="text-2xl font-bold text-center mb-1 tracking-wide" style={{ color: "#f2ede0" }}>
@@ -649,7 +658,7 @@ function PokerLedger() {
   }
 
   return (
-    <div className="w-full h-screen flex flex-col overflow-hidden relative">
+    <div className="w-full flex flex-col overflow-hidden relative" style={{ height: "100dvh" }}>
       <PlayerPanel
         name={name1}
         balance={balance1}

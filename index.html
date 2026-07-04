@@ -699,10 +699,16 @@ function PokerLedger() {
         locked={awaitingDeal}
       />
 
-      {/* rail */}
+      {/* rail — rotates to face whichever player is acting */}
       <div
         className="flex flex-col items-center gap-2 py-2 px-3"
-        style={{ background: "#7a5230", borderTop: "2px solid #5c3d21", borderBottom: "2px solid #5c3d21" }}
+        style={{
+          background: "#7a5230",
+          borderTop: "2px solid #5c3d21",
+          borderBottom: "2px solid #5c3d21",
+          transform: turn === 1 ? "rotate(180deg)" : "none",
+          transition: "transform 400ms ease",
+        }}
       >
         <div className="flex items-center justify-between w-full max-w-md gap-2">
           <div className="flex flex-col items-start leading-tight">

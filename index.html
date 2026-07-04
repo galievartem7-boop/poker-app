@@ -284,6 +284,7 @@ function PokerLedger() {
   const [streetActed, setStreetActed] = useState(0);
   const [awaitingDeal, setAwaitingDeal] = useState(false);
   const [pendingWin, setPendingWin] = useState(null);
+  const [pendingFold, setPendingFold] = useState(null);
   const [awaitingNewHand, setAwaitingNewHand] = useState(null);
   const [gameOverResult, setGameOverResult] = useState(null);
 
@@ -521,6 +522,13 @@ function PokerLedger() {
 
   function fold(player) {
     if (turn !== player) return;
+    setPendingFold(player);
+  }
+
+  function confirmFold() {
+    const player = pendingFold;
+    setPendingFold(null);
+    if (!player || turn !== player) return;
     pushHistory();
     const winner = player === 1 ? 2 : 1;
     const currentPot = stake1 + stake2;
@@ -533,6 +541,10 @@ function PokerLedger() {
     setFlash(winner);
     const newDealer = dealer === 1 ? 2 : 1;
     finishHand(nb1, nb2, newDealer);
+  }
+
+  function cancelFold() {
+    setPendingFold(null);
   }
 
   function win(player) {
@@ -597,6 +609,7 @@ function PokerLedger() {
       setStreetActed(last.streetActed);
       setAwaitingDeal(last.awaitingDeal);
       setPendingWin(null);
+      setPendingFold(null);
       setAwaitingNewHand(null);
       setFlash(null);
       return h.slice(0, -1);
@@ -725,7 +738,7 @@ function PokerLedger() {
         flashing={flash === 1}
         isDealer={dealer === 1}
         isTurn={turn === 1}
-        locked={awaitingDeal || !!awaitingNewHand || !!pendingWin}
+        locked={awaitingDeal || !!awaitingNewHand || !!pendingWin || !!pendingFold}
       />
 
       {/* rail — rotates to face whichever player is acting */}
@@ -898,7 +911,7 @@ function PokerLedger() {
         flashing={flash === 2}
         isDealer={dealer === 2}
         isTurn={turn === 2}
-        locked={awaitingDeal || !!awaitingNewHand || !!pendingWin}
+        locked={awaitingDeal || !!awaitingNewHand || !!pendingWin || !!pendingFold}
       />
 
       {showHelp && (
@@ -955,6 +968,46 @@ function PokerLedger() {
                 style={{ background: "#c9a227", color: "#1a1a1a" }}
               >
                 Да
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingFold && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-6"
+          style={{ background: "rgba(30,5,10,0.94)" }}
+        >
+          <div
+            className="w-full max-w-xs rounded-lg p-5 text-center"
+            style={{
+              background: "#3a1020",
+              border: "2px dashed #c9524f",
+              transform: pendingFold === 1 ? "rotate(180deg)" : "none",
+            }}
+          >
+            <div className="text-3xl mb-2">🚩</div>
+            <div className="font-bold text-lg mb-1" style={{ color: "#f2ede0" }}>
+              {pendingFold === 1 ? name1 : name2}, сбрасываешь карты?
+            </div>
+            <div className="text-xs mb-4" style={{ color: "#e8a0a0" }}>
+              Банк {formatRub(pot)} сразу уйдёт сопернику
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={confirmFold}
+                className="flex-1 h-12 rounded font-semibold uppercase text-xs tracking-wide active:scale-95"
+                style={{ background: "transparent", border: "1px solid #c9524f", color: "#c9524f" }}
+              >
+                Да, фолд
+              </button>
+              <button
+                onClick={cancelFold}
+                className="flex-1 h-12 rounded font-semibold uppercase text-xs tracking-wide active:scale-95"
+                style={{ background: "#f2ede0", color: "#3a1020" }}
+              >
+                Нет, играю
               </button>
             </div>
           </div>

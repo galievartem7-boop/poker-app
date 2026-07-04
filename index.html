@@ -283,6 +283,8 @@ function PokerLedger() {
   const [street, setStreet] = useState(0);
   const [streetActed, setStreetActed] = useState(0);
   const [awaitingDeal, setAwaitingDeal] = useState(false);
+  const [pendingWin, setPendingWin] = useState(null);
+  const [awaitingNewHand, setAwaitingNewHand] = useState(null);
   const [gameOverResult, setGameOverResult] = useState(null);
 
   useEffect(() => {
@@ -382,6 +384,20 @@ function PokerLedger() {
       setGameOverResult({ winner: nb1 <= 0 ? 2 : 1 });
       return;
     }
+    // Pause before the next hand: show final balances with the pot awarded,
+    // and wait for an explicit "Новая раздача" confirmation before posting blinds.
+    setBalance1(nb1);
+    setBalance2(nb2);
+    setStake1(0);
+    setStake2(0);
+    resetHandProgress();
+    setAwaitingNewHand({ nb1, nb2, newDealer });
+  }
+
+  function confirmNewHand() {
+    if (!awaitingNewHand) return;
+    const { nb1, nb2, newDealer } = awaitingNewHand;
+    setAwaitingNewHand(null);
     startHandWithDealer(newDealer, nb1, nb2);
   }
 
@@ -521,6 +537,13 @@ function PokerLedger() {
 
   function win(player) {
     if (pot <= 0) return;
+    setPendingWin(player);
+  }
+
+  function confirmWin() {
+    const player = pendingWin;
+    setPendingWin(null);
+    if (!player || pot <= 0) return;
     pushHistory();
     let nb1 = balance1;
     let nb2 = balance2;
@@ -529,6 +552,10 @@ function PokerLedger() {
     setFlash(player);
     const newDealer = dealer === 1 ? 2 : 1;
     finishHand(nb1, nb2, newDealer);
+  }
+
+  function cancelWin() {
+    setPendingWin(null);
   }
 
   function splitPot() {
@@ -569,6 +596,8 @@ function PokerLedger() {
       setStreet(last.street);
       setStreetActed(last.streetActed);
       setAwaitingDeal(last.awaitingDeal);
+      setPendingWin(null);
+      setAwaitingNewHand(null);
       setFlash(null);
       return h.slice(0, -1);
     });
@@ -696,7 +725,7 @@ function PokerLedger() {
         flashing={flash === 1}
         isDealer={dealer === 1}
         isTurn={turn === 1}
-        locked={awaitingDeal}
+        locked={awaitingDeal || !!awaitingNewHand || !!pendingWin}
       />
 
       {/* rail — rotates to face whichever player is acting */}
@@ -726,29 +755,49 @@ function PokerLedger() {
             ))}
           </div>
 
-          {street < STREET_NAMES.length - 1 && (
+          {awaitingNewHand ? (
             <button
-              onClick={confirmDeal}
-              disabled={!awaitingDeal}
-              title={awaitingDeal ? "Подтвердить, что карта выложена на стол" : "Сначала завершите торги на этой улице"}
-              className={
-                "px-2 h-8 rounded-full flex items-center gap-1 text-[9px] uppercase font-bold tracking-wide disabled:opacity-30 active:scale-90 transition-transform whitespace-nowrap " +
-                (awaitingDeal ? "animate-pulse" : "")
-              }
+              onClick={confirmNewHand}
+              className="px-2 h-8 rounded-full flex items-center gap-1 text-[9px] uppercase font-bold tracking-wide active:scale-90 transition-transform whitespace-nowrap animate-pulse"
               style={{ background: "#c9a227", color: "#1a1a1a" }}
             >
               <ArrowRight size={12} />
-              {STREET_NAMES[street + 1]} выложен
+              Новая раздача
             </button>
+          ) : (
+            street < STREET_NAMES.length - 1 && (
+              <button
+                onClick={confirmDeal}
+                disabled={!awaitingDeal}
+                title={awaitingDeal ? "Подтвердить, что карта выложена на стол" : "Сначала завершите торги на этой улице"}
+                className={
+                  "px-2 h-8 rounded-full flex items-center gap-1 text-[9px] uppercase font-bold tracking-wide disabled:opacity-30 active:scale-90 transition-transform whitespace-nowrap " +
+                  (awaitingDeal ? "animate-pulse" : "")
+                }
+                style={{ background: "#c9a227", color: "#1a1a1a" }}
+              >
+                <ArrowRight size={12} />
+                {STREET_NAMES[street + 1]} выложен
+              </button>
+            )
           )}
         </div>
 
-        {awaitingDeal && (
+        {awaitingDeal && !awaitingNewHand && (
           <div
             className="text-[9px] text-center px-2 py-1 rounded w-full max-w-md"
             style={{ background: "#5c1f3a", color: "#f2ede0" }}
           >
             Торги закрыты. Выложите {STREET_NAMES[street + 1].toLowerCase()} и нажмите кнопку выше
+          </div>
+        )}
+
+        {awaitingNewHand && (
+          <div
+            className="text-[9px] text-center px-2 py-1 rounded w-full max-w-md"
+            style={{ background: "#5c1f3a", color: "#f2ede0" }}
+          >
+            Раздача завершена. Соберите и перетасуйте карты, затем нажмите «Новая раздача»
           </div>
         )}
 
@@ -849,7 +898,7 @@ function PokerLedger() {
         flashing={flash === 2}
         isDealer={dealer === 2}
         isTurn={turn === 2}
-        locked={awaitingDeal}
+        locked={awaitingDeal || !!awaitingNewHand || !!pendingWin}
       />
 
       {showHelp && (
@@ -869,6 +918,46 @@ function PokerLedger() {
             </button>
           </div>
           <HandRankingsList rotated={false} />
+        </div>
+      )}
+
+      {pendingWin && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-6"
+          style={{ background: "rgba(5,20,15,0.92)" }}
+        >
+          <div
+            className="w-full max-w-xs rounded-lg p-5 text-center border-t-4"
+            style={{
+              background: "#7a5230",
+              borderColor: pendingWin === 1 ? "#c9524f" : "#3a7ac9",
+              transform: pendingWin === 1 ? "rotate(180deg)" : "none",
+            }}
+          >
+            <div className="text-3xl mb-2">🏆</div>
+            <div className="font-bold text-lg mb-1" style={{ color: "#f2ede0" }}>
+              {pendingWin === 1 ? name1 : name2} забирает банк?
+            </div>
+            <div className="text-sm mb-4" style={{ color: "#e8d9b8" }}>
+              {formatRub(pot)}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={cancelWin}
+                className="flex-1 h-12 rounded-full font-semibold uppercase text-sm tracking-wide active:scale-95"
+                style={{ background: "#5c3d21", color: "#e8d9b8" }}
+              >
+                Нет
+              </button>
+              <button
+                onClick={confirmWin}
+                className="flex-1 h-12 rounded-full font-semibold uppercase text-sm tracking-wide active:scale-95"
+                style={{ background: "#c9a227", color: "#1a1a1a" }}
+              >
+                Да
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
